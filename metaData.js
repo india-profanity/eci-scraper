@@ -16,18 +16,37 @@ function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Retry wrapper to handle retries on 500 errors
+async function retryRequest(fn, retries = 3, delayTime = 1000) {
+    try {
+        return await fn();
+    } catch (error) {
+        if (retries > 0 && error.response && error.response.status === 500) {
+            console.log("Retrying due to 500 error...");
+            await delay(delayTime);
+            return retryRequest(fn, retries - 1, delayTime * 2); // Exponential backoff
+        } else {
+            throw error;
+        }
+    }
+}
+
 async function getPartList(payload) {
-    const partRes = await axiosInstance.post(postURLs.get_part_list, payload);
-    return partRes.data.payload;
+    return retryRequest(async () => {
+        const partRes = await axiosInstance.post(postURLs.get_part_list, payload);
+        return partRes.data.payload;
+    });
 }
 
 async function getLanguages(payload) {
-    const languageRes = await axiosInstance.post(postURLs.get_ac_languages, payload);
-    return languageRes.data.payload;
+    return retryRequest(async () => {
+        const languageRes = await axiosInstance.post(postURLs.get_ac_languages, payload);
+        return languageRes.data.payload;
+    });
 }
 
 async function getConstituencies(districtCd) {
-    const constituencyRes = await axiosInstance.get(getURLs.constituency(districtCd));
+    const constituencyRes = await retryRequest(async () => axiosInstance.get(getURLs.constituency(districtCd)));
 
     const tempConstituency = {};
     const constituencyArray = constituencyRes.data;
@@ -45,8 +64,8 @@ async function getConstituencies(districtCd) {
         tempConstituency[`${id}`].parts = await getPartList(payload);
         tempConstituency[`${id}`].languages = await getLanguages(payload);
 
+        // Adding delay of 1 second (1000 ms)
         console.log(`Constituency ${id} Done`);
-        // Adding a delay of 1 second (1000 ms) between each constituency request
         await delay(1000);
     }
 
@@ -54,7 +73,7 @@ async function getConstituencies(districtCd) {
 }
 
 async function getDistricts(stateCd) {
-    const districtRes = await axiosInstance.get(getURLs.districts(stateCd));
+    const districtRes = await retryRequest(async () => axiosInstance.get(getURLs.districts(stateCd)));
 
     const tempDistrict = {};
     const districtArray = districtRes.data;
@@ -66,7 +85,6 @@ async function getDistricts(stateCd) {
         tempDistrict[`${id}`].acs = await getConstituencies(id);
 
         console.log(`## District ${id} Done`);
-        // Adding a delay of 1 second (1000 ms) between each district request
         await delay(1000);
     }
 
@@ -75,7 +93,7 @@ async function getDistricts(stateCd) {
 
 async function generateMetaData() {
     const metaData = {};
-    const stateRes = await axiosInstance.get(getURLs.state);
+    const stateRes = await retryRequest(async () => axiosInstance.get(getURLs.state));
     const statesArray = stateRes.data;
 
     for (const state of statesArray) {
@@ -84,8 +102,7 @@ async function generateMetaData() {
 
         metaData[`${id}`].districts = await getDistricts(id);
 
-        console.log(`#### State ${id} Done`);
-        // Adding a delay of 1 second (1000 ms) between each state request
+        console.log(`## State ${id} Done`);
         await delay(1000);
     }
 
