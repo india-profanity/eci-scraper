@@ -12,6 +12,10 @@ const postURLs = {
     get_ac_languages: '/printing-publish/get-ac-languages'
 }
 
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function getPartList(payload) {
     const partRes = await axiosInstance.post(postURLs.get_part_list, payload);
     return partRes.data.payload;
@@ -40,6 +44,10 @@ async function getConstituencies(districtCd) {
 
         tempConstituency[`${id}`].parts = await getPartList(payload);
         tempConstituency[`${id}`].languages = await getLanguages(payload);
+
+        console.log(`Constituency ${id} Done`);
+        // Adding a delay of 1 second (1000 ms) between each constituency request
+        await delay(1000);
     }
 
     return tempConstituency;
@@ -56,6 +64,10 @@ async function getDistricts(stateCd) {
         tempDistrict[`${id}`] = district;
 
         tempDistrict[`${id}`].acs = await getConstituencies(id);
+
+        console.log(`## District ${id} Done`);
+        // Adding a delay of 1 second (1000 ms) between each district request
+        await delay(1000);
     }
 
     return tempDistrict;
@@ -71,6 +83,10 @@ async function generateMetaData() {
         metaData[`${id}`] = state;
 
         metaData[`${id}`].districts = await getDistricts(id);
+
+        console.log(`#### State ${id} Done`);
+        // Adding a delay of 1 second (1000 ms) between each state request
+        await delay(1000);
     }
 
     try {
