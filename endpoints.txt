@@ -7,7 +7,7 @@ https://gateway-voters.eci.gov.in/api/v1/captcha-service/generateCaptcha/EROLL
 GET Districts
 https://gateway-voters.eci.gov.in/api/v1/common/districts/{StateCd}
 
-GET Constituencies
+GET Constituencies (Dont know why)
 https://gateway-voters.eci.gov.in/api/v1/common/constituencies?stateCode={StateCd}
 
 GET Assembly Constituency (After selecting District)
