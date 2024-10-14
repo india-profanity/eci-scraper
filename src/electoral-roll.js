@@ -9,38 +9,49 @@ const statesDir = path.join('output', 'metadata', 'states'); // Path to the stat
 async function downloadPDF(partPayload) {
   const captchaURL = 'http://localhost:8000/generate_and_solve_captchas';
   const downloadPDFURL = 'https://gateway-voters.eci.gov.in/api/v1/printing-publish/generate-published-geroll';
-
-  // Call captcha generation API to get 3 captchas
-  const captchaRes = await axios.post(captchaURL, { count: 3 });
-  const captchas = captchaRes.data.captchas; // Array of captcha objects
+  
+  const maxCaptchaTries = 3; // Maximum tries for getting new captchas
 
   let successfulDownload = false;
   
-  for (const captcha of captchas) {
-    const payloadWithCaptcha = {
-      ...partPayload, // Spread the original partPayload
-      captcha: captcha.value, // Use the captcha value
-      captchaId: captcha.id,  // Use the captcha ID
-    };
+  for (let attempt = 1; attempt <= maxCaptchaTries; attempt++) {
+    console.log(`Attempt ${attempt} to get captchas for part ${partPayload.partNumber}`);
 
-    try {
-      // First call without isSupplement
-      await downloadAndSavePDF(payloadWithCaptcha, downloadPDFURL);
+    // Call captcha generation API to get 3 captchas
+    const captchaRes = await axios.post(captchaURL, { count: 3 });
+    const captchas = captchaRes.data.captchas; // Array of captcha objects
+    
+    for (const captcha of captchas) {
+      const payloadWithCaptcha = {
+        ...partPayload, // Spread the original partPayload
+        captcha: captcha.value, // Use the captcha value
+        captchaId: captcha.id,  // Use the captcha ID
+      };
 
-      // Second call with isSupplement: true
-      const payloadWithSupplement = { ...payloadWithCaptcha, isSupplement: true };
-      await downloadAndSavePDF(payloadWithSupplement, downloadPDFURL);
+      try {
+        // First call without isSupplement
+        await downloadAndSavePDF(payloadWithCaptcha, downloadPDFURL);
 
-      successfulDownload = true;
-      break; // Exit the loop if successful
+        // Second call with isSupplement: true
+        const payloadWithSupplement = { ...payloadWithCaptcha, isSupplement: true };
+        await downloadAndSavePDF(payloadWithSupplement, downloadPDFURL);
 
-    } catch (error) {
-      console.log(`Captcha ${captcha.value} failed. Trying the next one.`);
+        successfulDownload = true;
+        break; // Exit the loop if successful
+      } catch (error) {
+        console.log(`Captcha ${captcha.value} failed. Trying the next one.`);
+      }
     }
+
+    if (successfulDownload) {
+      break; // Exit the retry loop if download succeeded
+    }
+
+    console.log(`All captchas in attempt ${attempt} failed. Retrying with new captchas...`);
   }
 
   if (!successfulDownload) {
-    console.error(`All captcha attempts failed for ${partPayload.acNumber}`);
+    console.error(`All captcha attempts failed after ${maxCaptchaTries} tries for part ${partPayload.partNumber}`);
   }
 }
 
@@ -83,7 +94,7 @@ async function processStateData(stateData) {
     }
   }
 
-  console.log(`Finished processing state: ${stateData.stateName}`);
+  console.log(`Finished processing state: ${stateName}`);
 }
 
 // Function to loop through all state folders
