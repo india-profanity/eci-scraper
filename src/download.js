@@ -4,15 +4,16 @@ import fs from 'fs';
 async function downloadVoterList() {
   for (let i = 1; i <= 10; i++) {
     // API endpoint and payload
-    const url = 'https://gateway-voters.eci.gov.in/api/v1/printing-publish/generate-published-geroll';
+    const url =
+      'https://gateway-voters.eci.gov.in/api/v1/printing-publish/generate-published-geroll';
     const payload = {
       acNumber: 4,
-      captcha: "uo5pfi",  // Replace with your actual captcha
-      captchaId: "4F991C8F59D5463E33067AB6AF7F1216",
-      districtCd: "S0702",
-      langCd: "HIN",
+      captcha: 'uo5pfi', // Replace with your actual captcha
+      captchaId: '4F991C8F59D5463E33067AB6AF7F1216',
+      districtCd: 'S0702',
+      langCd: 'HIN',
       partNumber: i,
-      stateCd: "S07"
+      stateCd: 'S07',
     };
 
     try {
@@ -33,7 +34,6 @@ async function downloadVoterList() {
       } else {
         console.error('No file data found in the response.');
       }
-
     } catch (error) {
       console.error(`Error during the request for part ${i}:`, error.message);
     }
