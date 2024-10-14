@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { program } from 'commander';
-import generateMetaData from '../metadata.js';
+import generateMetaData from '../meta-data.js';
 import { getStateMetadata, downloadPDFs } from './actions.js';
 
 program.version('1.0.0').description('EIC Scraper CLI');
