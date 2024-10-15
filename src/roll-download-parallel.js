@@ -4,6 +4,7 @@ import axios from 'axios';
 import chalk from 'chalk';
 
 const statesDir = path.join('output', 'metadata', 'states'); // Path to the states directory
+const concurrency = 10;
 
 // Download and solve captchas, then download PDFs
 async function downloadPDF(partPayload) {
@@ -76,49 +77,44 @@ async function processStateData(stateData) {
   console.log(`Processing state: ${stateName}`);
 
   // DOWNLOAD PDF using allParts Array
-  for (const part of allParts) {
-    console.log(chalk.red(part.partNumber));
-    try {
-      // fetch language first
-      const languageRes = await axios.post(
-        'https://gateway-voters.eci.gov.in/api/v1/printing-publish/get-ac-languages',
-        {
-          stateCd: part.stateCd,
-          districtCd: part.districtCd,
-          acNumber: part.acNumber,
-        },
-      );
+  for (let i = 0; i < allParts.length; i += concurrency) {
+    const chunk = allParts.slice(i, i + concurrency);
+    await Promise.all(
+      chunk.map(async (part) => {
+        try {
+          console.log(chalk.yellow(`Processing part: ${part.partNumber}`));
+          const languageRes = await axios.post(
+            'https://gateway-voters.eci.gov.in/api/v1/printing-publish/get-ac-languages',
+            {
+              stateCd: part.stateCd,
+              districtCd: part.districtCd,
+              acNumber: part.acNumber,
+            },
+          );
 
-      // figure out if there is 'ENG' or 'HIN' as language in languagesRes.data.payload
-      const isHindiPresent = languageRes.data.payload.find(
-        (l) => l.languagePneumonicL1 === 'HIN',
-      );
-      const isEnglishPresent = languageRes.data.payload.find(
-        (l) => l.languagePneumonicL1 === 'ENG',
-      );
-      const startTime = Date.now();
-      await downloadPDF({
-        ...part,
-        langCd: isHindiPresent
-          ? 'HIN'
-          : isEnglishPresent
-          ? 'ENG'
-          : languageRes.data.payload[0],
-      }); // Call the function to download PDFs
-      const endTime = Date.now();
-      console.log(
-        chalk.blue(
-          `Time taken to download PDF for part ${part.partNumber}: ${
-            endTime - startTime
-          } ms`,
-        ),
-      );
-    } catch (error) {
-      console.error(
-        `Failed to download for part ${part.partNumber}:`,
-        error.message,
-      );
-    }
+          const isHindiPresent = languageRes.data.payload.find(
+            (l) => l.languagePneumonicL1 === 'HIN',
+          );
+          const isEnglishPresent = languageRes.data.payload.find(
+            (l) => l.languagePneumonicL1 === 'ENG',
+          );
+          const langCd = isHindiPresent
+            ? 'HIN'
+            : isEnglishPresent
+            ? 'ENG'
+            : languageRes.data.payload[0].languagePneumonicL1;
+
+          await downloadPDF({ ...part, langCd });
+        } catch (error) {
+          console.error(
+            chalk.red(
+              `Failed to download for part ${part.partNumber}:`,
+              error.message,
+            ),
+          );
+        }
+      }),
+    );
   }
 
   console.log(`Finished processing state: ${stateName}`);
