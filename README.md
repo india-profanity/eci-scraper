@@ -50,3 +50,5 @@ langCd: "HIN",
 partNumber: 1,
 stateCd: "S07"
 }
+
+use - https://www.npmjs.com/package/p-queue

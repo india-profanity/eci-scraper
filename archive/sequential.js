@@ -2,9 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import chalk from 'chalk';
+import { OUTPUT_DIR } from '../src/constants/directories';
 
-const statesDir = path.join('output', 'metadata', 'states'); // Path to the states directory
-const concurrency = 10;
+const statesDir = path.join(OUTPUT_DIR, 'metadata', 'states'); // Path to the states directory
 
 // Download and solve captchas, then download PDFs
 async function downloadPDF(partPayload) {
@@ -52,7 +52,7 @@ async function downloadAndSavePDF(payload, url) {
     payload.isSupplement ? '_supplement' : ''
   }_${Date.now()}.pdf`;
   const pdfDirectory = path.join(
-    'output',
+    OUTPUT_DIR,
     'metadata',
     'states',
     payload.stateCd,
@@ -71,57 +71,68 @@ async function processStateData(stateData) {
   const allParts = allConstituencies.flatMap((c) => c.parts); // Array of all parts
   // write allParts to a json file
   fs.writeFileSync(
-    path.join('output', 'metadata', 'states', stateData.stateCd, 'parts.json'),
+    path.join(
+      OUTPUT_DIR,
+      'metadata',
+      'states',
+      stateData.stateCd,
+      'parts.json',
+    ),
     JSON.stringify(allParts, null, 2),
   );
   console.log(`Processing state: ${stateName}`);
 
   // DOWNLOAD PDF using allParts Array
-  for (let i = 0; i < allParts.length; i += concurrency) {
-    const chunk = allParts.slice(i, i + concurrency);
-    await Promise.all(
-      chunk.map(async (part) => {
-        try {
-          console.log(chalk.yellow(`Processing part: ${part.partNumber}`));
-          const languageRes = await axios.post(
-            'https://gateway-voters.eci.gov.in/api/v1/printing-publish/get-ac-languages',
-            {
-              stateCd: part.stateCd,
-              districtCd: part.districtCd,
-              acNumber: part.acNumber,
-            },
-          );
+  for (const part of allParts) {
+    console.log(chalk.red(part.partNumber));
+    try {
+      // fetch language first
+      const languageRes = await axios.post(
+        'https://gateway-voters.eci.gov.in/api/v1/printing-publish/get-ac-languages',
+        {
+          stateCd: part.stateCd,
+          districtCd: part.districtCd,
+          acNumber: part.acNumber,
+        },
+      );
 
-          const isHindiPresent = languageRes.data.payload.find(
-            (l) => l.languagePneumonicL1 === 'HIN',
-          );
-          const isEnglishPresent = languageRes.data.payload.find(
-            (l) => l.languagePneumonicL1 === 'ENG',
-          );
-          const langCd = isHindiPresent
-            ? 'HIN'
-            : isEnglishPresent
-            ? 'ENG'
-            : languageRes.data.payload[0].languagePneumonicL1;
-
-          await downloadPDF({ ...part, langCd });
-        } catch (error) {
-          console.error(
-            chalk.red(
-              `Failed to download for part ${part.partNumber}:`,
-              error.message,
-            ),
-          );
-        }
-      }),
-    );
+      // figure out if there is 'ENG' or 'HIN' as language in languagesRes.data.payload
+      const isHindiPresent = languageRes.data.payload.find(
+        (l) => l.languagePneumonicL1 === 'HIN',
+      );
+      const isEnglishPresent = languageRes.data.payload.find(
+        (l) => l.languagePneumonicL1 === 'ENG',
+      );
+      const startTime = Date.now();
+      await downloadPDF({
+        ...part,
+        langCd: isEnglishPresent
+          ? 'ENG'
+          : isHindiPresent
+          ? 'HIN'
+          : languageRes.data.payload[0],
+      }); // Call the function to download PDFs
+      const endTime = Date.now();
+      console.log(
+        chalk.blue(
+          `Time taken to download PDF for part ${part.partNumber}: ${
+            endTime - startTime
+          } ms`,
+        ),
+      );
+    } catch (error) {
+      console.error(
+        `Failed to download for part ${part.partNumber}:`,
+        error.message,
+      );
+    }
   }
 
   console.log(`Finished processing state: ${stateName}`);
 }
 
 // Function to loop through all state folders
-async function processStates() {
+async function downloadAllPDFsSequentially() {
   try {
     // Read the contents of the states directory
     const stateFolders = fs.readdirSync(statesDir);
@@ -186,5 +197,4 @@ async function decodeAndSavePDF(base64String, fileName, outputDirectory) {
   }
 }
 
-// Run the script
-processStates();
+export default downloadAllPDFsSequentially;

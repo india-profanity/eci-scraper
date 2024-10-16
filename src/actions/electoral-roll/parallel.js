@@ -2,19 +2,32 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import chalk from 'chalk';
+import PQueue from 'p-queue';
+import * as dotenv from 'dotenv';
+import { OUTPUT_DIR } from '../../constants/directories.js';
 
-const statesDir = path.join('output', 'metadata', 'states'); // Path to the states directory
+dotenv.config();
+
+const StatesDir = path.join(OUTPUT_DIR, 'metadata', 'states'); // Path to the states directory
+
+const concurrency = process.env.PDF_CONCURRENCY || 10; // Adjust this value based on your needs
+const queue = new PQueue({
+  concurrency: parseInt(process.env.CONCURRENCY, 10) || 5,
+});
 
 // Download and solve captchas, then download PDFs
 async function downloadPDF(partPayload) {
-  const captchaURL = 'http://localhost:8000/generate_and_solve_captchas';
+  const captchaURL =
+    process.env.CAPTCHA_URL ||
+    'http://localhost:8000/generate_and_solve_captchas';
   const downloadPDFURL =
+    process.env.PDF_DOWNLOAD_URL ||
     'https://gateway-voters.eci.gov.in/api/v1/printing-publish/generate-published-geroll';
 
-  let successfulDownload = false;
-
-  // Call captcha generation API to get 3 captchas
-  const captchaRes = await axios.post(captchaURL, { count: 10 });
+  // Call captcha generation API to get 10 captchas
+  const captchaRes = await axios.post(captchaURL, {
+    count: process.env.NUMBER_OF_CAPTCHAS || 10,
+  });
   const captchas = captchaRes.data.captchas; // Array of captcha objects
 
   for (const captcha of captchas) {
@@ -30,7 +43,9 @@ async function downloadPDF(partPayload) {
       return; // Exit the loop if successful
     } catch (error) {
       console.log(
-        `Captcha ${captcha.value} failed with error: ${error}. Trying the next one.`,
+        chalk.magenta(
+          `${partPayload.partNumber}-${partPayload.partName} Captcha ${captcha.value} failed with error: ${error}. Trying the next one.`,
+        ),
       );
     }
   }
@@ -51,7 +66,7 @@ async function downloadAndSavePDF(payload, url) {
     payload.isSupplement ? '_supplement' : ''
   }_${Date.now()}.pdf`;
   const pdfDirectory = path.join(
-    'output',
+    OUTPUT_DIR,
     'metadata',
     'states',
     payload.stateCd,
@@ -70,69 +85,81 @@ async function processStateData(stateData) {
   const allParts = allConstituencies.flatMap((c) => c.parts); // Array of all parts
   // write allParts to a json file
   fs.writeFileSync(
-    path.join('output', 'metadata', 'states', stateData.stateCd, 'parts.json'),
+    path.join(
+      OUTPUT_DIR,
+      'metadata',
+      'states',
+      stateData.stateCd,
+      'parts.json',
+    ),
     JSON.stringify(allParts, null, 2),
   );
   console.log(`Processing state: ${stateName}`);
 
   // DOWNLOAD PDF using allParts Array
-  for (const part of allParts) {
-    console.log(chalk.red(part.partNumber));
-    try {
-      // fetch language first
-      const languageRes = await axios.post(
-        'https://gateway-voters.eci.gov.in/api/v1/printing-publish/get-ac-languages',
-        {
-          stateCd: part.stateCd,
-          districtCd: part.districtCd,
-          acNumber: part.acNumber,
-        },
-      );
+  await Promise.all(
+    allParts.map((part) =>
+      queue.add(async () => {
+        console.log(
+          chalk.yellow(`Processing part: ${part.partName}-${part.partNumber}`),
+        );
+        try {
+          const languageRes = await axios.post(
+            'https://gateway-voters.eci.gov.in/api/v1/printing-publish/get-ac-languages',
+            {
+              stateCd: part.stateCd,
+              districtCd: part.districtCd,
+              acNumber: part.acNumber,
+            },
+          );
 
-      // figure out if there is 'ENG' or 'HIN' as language in languagesRes.data.payload
-      const isHindiPresent = languageRes.data.payload.find(
-        (l) => l.languagePneumonicL1 === 'HIN',
-      );
-      const isEnglishPresent = languageRes.data.payload.find(
-        (l) => l.languagePneumonicL1 === 'ENG',
-      );
-      const startTime = Date.now();
-      await downloadPDF({
-        ...part,
-        langCd: isHindiPresent
-          ? 'HIN'
-          : isEnglishPresent
-          ? 'ENG'
-          : languageRes.data.payload[0],
-      }); // Call the function to download PDFs
-      const endTime = Date.now();
-      console.log(
-        chalk.blue(
-          `Time taken to download PDF for part ${part.partNumber}: ${
-            endTime - startTime
-          } ms`,
-        ),
-      );
-    } catch (error) {
-      console.error(
-        `Failed to download for part ${part.partNumber}:`,
-        error.message,
-      );
-    }
-  }
+          const isHindiPresent = languageRes.data.payload.find(
+            (l) => l.languagePneumonicL1 === 'HIN',
+          );
+          const isEnglishPresent = languageRes.data.payload.find(
+            (l) => l.languagePneumonicL1 === 'ENG',
+          );
+          const startTime = Date.now();
+          await downloadPDF({
+            ...part,
+            langCd: isEnglishPresent
+              ? 'ENG'
+              : isHindiPresent
+              ? 'HIN'
+              : languageRes.data.payload[0],
+          });
+          const endTime = Date.now();
+          console.log(
+            chalk.blue(
+              `Time taken to download PDF for part ${part.partNumber}: ${
+                endTime - startTime
+              } ms`,
+            ),
+          );
+        } catch (error) {
+          console.error(
+            chalk.red(
+              `Failed to download for part ${part.partNumber}:`,
+              error.message,
+            ),
+          );
+        }
+      }),
+    ),
+  );
 
   console.log(`Finished processing state: ${stateName}`);
 }
 
 // Function to loop through all state folders
-async function processStates() {
+async function downloadAllPDFsParallely() {
   try {
     // Read the contents of the states directory
-    const stateFolders = fs.readdirSync(statesDir);
+    const stateFolders = fs.readdirSync(StatesDir);
 
     for (const folder of stateFolders) {
       if (folder == '.DS_Store') continue;
-      const stateJsonPath = path.join(statesDir, folder, 'state.json');
+      const stateJsonPath = path.join(StatesDir, folder, 'state.json');
 
       // Check if state.json exists in the folder
       try {
@@ -190,5 +217,4 @@ async function decodeAndSavePDF(base64String, fileName, outputDirectory) {
   }
 }
 
-// Run the script
-processStates();
+export default downloadAllPDFsParallely;

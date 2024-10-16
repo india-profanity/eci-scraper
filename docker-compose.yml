@@ -1,0 +1,16 @@
+services:
+  minio:
+    image: minio/minio
+    container_name: minio
+    ports:
+      - "9000:9000"   # MinIO browser/UI port
+      - "9001:9001"   # MinIO console/management port
+    environment:
+      MINIO_ROOT_USER: minioadmin  # Change this to your preferred username
+      MINIO_ROOT_PASSWORD: minioadmin  # Change this to a strong password
+    volumes:
+      - minio_data:/data  # Persistent data storage
+    command: server /data --console-address ":9001"
+
+volumes:
+  minio_data:

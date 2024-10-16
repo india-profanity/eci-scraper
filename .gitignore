@@ -1,3 +1,8 @@
 node_modules
 Output
 .env
+
+.venv
+# DS_Store
+.DS_Store
+**/*/.DS_Store

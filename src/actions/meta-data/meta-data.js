@@ -1,31 +1,22 @@
 import fs from 'fs';
 import path from 'path';
 import chalk from 'chalk';
-import axiosInstance from './helper/axios.js';
-import { EICURLs } from './constants/urls.js';
+import axiosInstance from '../../helper/axios.js';
+import { EICURLs } from '../../constants/urls.js';
+import { OUTPUT_DIR } from '../../constants/directories.js';
+import { retryRequest } from '../../helper/http-utils.js';
+import { colorLog } from '../../helper/chalk.js';
+import { processInChunks } from '../../helper/parallel.js';
 
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+const concurrency = parseInt(process.env.METADATA_CONCURRENCY) || 5; // Adjust this value as needed
 
 const failedRequests = [];
-// Retry wrapper to handle retries on 500 errors
-async function retryRequest(fn, retries = 3, delayTime = 100) {
-  try {
-    return await fn();
-  } catch (error) {
-    if (retries > 0 && error.response && error.response.status === 500) {
-      colorLog('Retrying due to 500 error...', 'yellow');
-      await delay(delayTime);
-      return retryRequest(fn, retries - 1, delayTime * 2); // Exponential backoff
-    } else {
-      failedRequests.push({ fn, error });
-      colorLog(`Request failed: ${error.message}`, 'red');
-      return null; // or a default value, depending on your needs
-    }
-  }
-}
 
+/**
+ *
+ * @param {*} payload
+ * @returns
+ */
 async function getPartList(payload) {
   return retryRequest(async () => {
     const partRes = await axiosInstance.post(
@@ -33,9 +24,14 @@ async function getPartList(payload) {
       payload,
     );
     return partRes.data.payload;
-  });
+  }, failedRequests);
 }
 
+/**
+ *
+ * @param {*} payload
+ * @returns
+ */
 async function getLanguages(payload) {
   return retryRequest(async () => {
     const languageRes = await axiosInstance.post(
@@ -46,26 +42,12 @@ async function getLanguages(payload) {
   });
 }
 
-// Add colorful logging function
-function colorLog(message, color = 'white') {
-  console.log(chalk[color](message));
-}
-
-// Add a utility function to process items in chunks
-async function processInChunks(items, chunkSize, processFunction) {
-  const chunks = [];
-  for (let i = 0; i < items.length; i += chunkSize) {
-    chunks.push(items.slice(i, i + chunkSize));
-  }
-
-  const results = [];
-  for (const chunk of chunks) {
-    const chunkResults = await Promise.all(chunk.map(processFunction));
-    results.push(...chunkResults);
-  }
-  return results;
-}
-
+/**
+ *
+ * @param {*} stateCd
+ * @param {*} districtCd
+ * @returns
+ */
 async function getConstituencies(stateCd, districtCd) {
   const constituencyRes = await retryRequest(async () =>
     axiosInstance.get(EICURLs.acs.endpoint.replace(':districtCd', districtCd)),
@@ -86,7 +68,7 @@ async function getConstituencies(stateCd, districtCd) {
 
     // Create constituency file
     const constituencyPath = path.join(
-      'output',
+      OUTPUT_DIR,
       'metadata',
       'states',
       stateCd,
@@ -106,6 +88,11 @@ async function getConstituencies(stateCd, districtCd) {
   return processInChunks(constituencyArray, concurrency, processConstituency);
 }
 
+/**
+ *
+ * @param {*} stateCd
+ * @returns
+ */
 async function getDistricts(stateCd) {
   const districtRes = await retryRequest(async () =>
     axiosInstance.get(EICURLs.districts.endpoint.replace(':stateCd', stateCd)),
@@ -123,6 +110,9 @@ async function getDistricts(stateCd) {
   return processInChunks(districtArray, concurrency, processDistrict);
 }
 
+/**
+ *
+ */
 async function generateMetaData() {
   const stateRes = await retryRequest(async () =>
     axiosInstance.get(EICURLs.state.endpoint),
@@ -134,7 +124,7 @@ async function generateMetaData() {
     state.districts = await getDistricts(id);
 
     // Create state file
-    const statePath = path.join('output', 'metadata', 'states', id);
+    const statePath = path.join(OUTPUT_DIR, 'metadata', 'states', id);
     fs.mkdirSync(statePath, { recursive: true });
     fs.writeFileSync(
       path.join(statePath, 'state.json'),
@@ -149,10 +139,5 @@ async function generateMetaData() {
 
   colorLog('All data generated successfully', 'yellow');
 }
-
-// Set the concurrency level
-const concurrency = 5; // Adjust this value as needed
-
-generateMetaData();
 
 export default generateMetaData;
