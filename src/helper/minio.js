@@ -28,7 +28,7 @@ async function ensureBucketExists() {
 }
 
 // Function to check if a file exists in MinIO
-async function fileExistsInMinio(minioPath) {
+export async function fileExistsInMinio(minioPath) {
   try {
     await minioClient.statObject(bucketName, minioPath);
     return true;
@@ -41,7 +41,7 @@ async function fileExistsInMinio(minioPath) {
 }
 
 // Function to upload a single file if it doesn't exist or has been modified
-async function uploadFileIfNeeded(filePath, minioPath) {
+export async function uploadFileIfNeeded(filePath, minioPath) {
   const stats = fs.statSync(filePath);
   const fileExists = await fileExistsInMinio(minioPath);
 

@@ -5,6 +5,7 @@ import chalk from 'chalk';
 import PQueue from 'p-queue';
 import * as dotenv from 'dotenv';
 import { OUTPUT_DIR } from '../../constants/directories.js';
+import { fileExistsInMinio, uploadFileIfNeeded } from '../../helper/minio.js';
 
 dotenv.config();
 
@@ -72,6 +73,19 @@ async function downloadAndSavePDF(payload, url) {
     payload.stateCd,
     'pdfs',
   );
+
+  // check if the file already exists in minio or in the local directory
+  const existsInMIinIO = (await fileExistsInMinio(
+      pdfDirectory.split('output')[1] + '/' + fileName,
+    ))
+  console
+  const fileExists = fs.existsSync(path.join(pdfDirectory, fileName));
+  if (fileExists || existsInMIinIO) {
+    console.log(chalk.yellow(`File already exists in MinIO: ${fileName}`));
+    return;
+  } else {
+    console.log(chalk.magenta('calling decode and save pdf'))
+  }
   await decodeAndSavePDF(base64File, fileName, pdfDirectory);
 
   console.log(`PDF saved: ${fileName}`);
@@ -156,13 +170,45 @@ async function downloadAllPDFsParallely() {
   try {
     // Read the contents of the states directory
     let stateFolders = fs.readdirSync(StatesDir);
-    stateFolders = [ 'S24', 'S07', 'S01', 'S02', 'S03', 'S04', 'S05', 'S06', 'S08', 'S10', 'S11', 'S12', 'S13', 'S14', 'S15', 'S16', 'S17', 'S18', 'S19', 'S20',
- 'S21', 'S22', 'S23',
-  'S25', 'S26', 'S27', 'S28',
-  'S29', 'S50', 'U01', 'U02',
-  'U03', 'U05', 'U06', 'U07',
-  'U08', 'U09'
-]
+    stateFolders = [
+      'S24',
+      'S07',
+      'S01',
+      'S02',
+      'S03',
+      'S04',
+      'S05',
+      'S06',
+      'S08',
+      'S10',
+      'S11',
+      'S12',
+      'S13',
+      'S14',
+      'S15',
+      'S16',
+      'S17',
+      'S18',
+      'S19',
+      'S20',
+      'S21',
+      'S22',
+      'S23',
+      'S25',
+      'S26',
+      'S27',
+      'S28',
+      'S29',
+      'S50',
+      'U01',
+      'U02',
+      'U03',
+      'U05',
+      'U06',
+      'U07',
+      'U08',
+      'U09',
+    ];
 
     for (const folder of stateFolders) {
       if (folder == '.DS_Store') continue;
@@ -218,6 +264,24 @@ async function decodeAndSavePDF(base64String, fileName, outputDirectory) {
     fs.writeFileSync(filePath, pdfBuffer, { flag: 'wx' });
 
     console.log(chalk.green(`PDF saved successfully: ${filePath}`));
+    // Upload to MinIO
+    try {
+      const minioPath =
+        absoluteOutputDir.split('output')[1] + '/' + sanitizedFileName;
+      await uploadFileIfNeeded(filePath, minioPath);
+      console.log(
+        chalk.green(`File uploaded successfully to MinIO: ${minioPath}`),
+      );
+
+      // Delete the local file after successful upload
+      fs.unlinkSync(filePath);
+      console.log(chalk.green(`Local file deleted: ${filePath}`));
+    } catch (uploadError) {
+      console.error(
+        chalk.yellow(`Failed to upload to MinIO: ${uploadError.message}`),
+      );
+      console.log(chalk.yellow(`Keeping local file: ${filePath}`));
+    }
   } catch (error) {
     console.error(chalk.red(`Error saving PDF: ${error.message}`));
     throw error;
