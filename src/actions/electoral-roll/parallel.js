@@ -65,7 +65,7 @@ async function downloadAndSavePDF(payload, url) {
     payload.acNumber
   }_part${payload.partNumber}${
     payload.isSupplement ? '_supplement' : ''
-  }_${Date.now()}.pdf`;
+  }.pdf`;
   const pdfDirectory = path.join(
     OUTPUT_DIR,
     'metadata',
