@@ -6,3 +6,5 @@ Output
 # DS_Store
 .DS_Store
 **/*/.DS_Store
+insights/
+.DS_Store
