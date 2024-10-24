@@ -11,9 +11,10 @@ dotenv.config();
 
 const StatesDir = path.join(OUTPUT_DIR, 'metadata', 'states'); // Path to the states directory
 
-const concurrency = process.env.PDF_CONCURRENCY || 10; // Adjust this value based on your needs
+const concurrency = parseInt(process.env.PDF_CONCURRENCY, 10) || 10; // Adjust this value based on your needs
+console.log(chalk.green(`Concurrency: ${concurrency}`));
 const queue = new PQueue({
-  concurrency: parseInt(process.env.CONCURRENCY, 10) || 5,
+  concurrency,
 });
 
 // Download and solve captchas, then download PDFs
@@ -63,9 +64,7 @@ async function downloadAndSavePDF(payload, url) {
   // Define file name using the payload values
   const fileName = `${payload.stateCd}_district${payload.districtCd}_ac${
     payload.acNumber
-  }_part${payload.partNumber}${
-    payload.isSupplement ? '_supplement' : ''
-  }.pdf`;
+  }_part${payload.partNumber}${payload.isSupplement ? '_supplement' : ''}.pdf`;
   const pdfDirectory = path.join(
     OUTPUT_DIR,
     'metadata',
@@ -75,16 +74,16 @@ async function downloadAndSavePDF(payload, url) {
   );
 
   // check if the file already exists in minio or in the local directory
-  const existsInMIinIO = (await fileExistsInMinio(
-      pdfDirectory.split('output')[1] + '/' + fileName,
-    ))
-  console
+  const existsInMIinIO = await fileExistsInMinio(
+    pdfDirectory.split('output')[1] + '/' + fileName,
+  );
+  console;
   const fileExists = fs.existsSync(path.join(pdfDirectory, fileName));
   if (fileExists || existsInMIinIO) {
     console.log(chalk.yellow(`File already exists in MinIO: ${fileName}`));
     return;
   } else {
-    console.log(chalk.magenta('calling decode and save pdf'))
+    console.log(chalk.magenta('calling decode and save pdf'));
   }
   await decodeAndSavePDF(base64File, fileName, pdfDirectory);
 

@@ -3,11 +3,12 @@ import fs from 'fs';
 import path from 'path';
 import * as dotenv from 'dotenv';
 import chalk from 'chalk';
+import { OUTPUT_DIR } from '../constants/directories.js';
 
 dotenv.config();
 
 // Minio client configuration
-const minioClient = new Client({
+export const minioClient = new Client({
   endPoint: process.env.MINIO_ENDPOINT,
   port: parseInt(process.env.MINIO_PORT, 10),
   useSSL: process.env.MINIO_USE_SSL === 'true',
